@@ -872,3 +872,119 @@ async def create_file(
         "token": token,
         "fileb_content_type": fileb.content_type,
     }
+
+"""Error handling"""
+from fastapi import HTTPException
+items_one = {"foo": "The Foo wwwww"}
+
+@app.get('/items/one/404')
+async def read_item(item_id: str):
+    if item_id not in items_one:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"item": items_one[item_id]}
+
+
+@app.get("/items-header/{item_id}")
+async def read_item_header(item_id: str):
+    """error with custom header at response"""
+    if item_id not in items:
+        raise HTTPException(
+            status_code=404,
+            detail="Item not found",
+            headers={"X-Error": "There goes my error"},
+        )
+    return {"item": items[item_id]}
+
+class UnicornException(Exception):
+    def __init__(self, name: str):
+        self.name = name
+
+from fastapi import Request
+@app.exception_handler(UnicornException)
+async def unicorn_exception_handler(request: Request, exc: UnicornException):
+    return JSONResponse(
+        status_code=418,
+        content={"message": f"Oops! {exc.name} did something. There goes a rainbow..."},
+    )
+
+@app.get("/unicorns/{name}")
+async def read_unicorn(name: str):
+    if name == "yolo":
+        raise UnicornException(name=name)
+    return {"unicorn_name": name}
+
+"""
+Basic Exception
+from fastapi.exceptions import RequestValidationError
+"""
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import PlainTextResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc):
+    return PlainTextResponse(str(exc.detail), status_code=exc.status_code)
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc):
+    return PlainTextResponse(str(exc), status_code=400)
+
+@app.get("/errors/handler/items/{item_id}")
+async def read_item(item_id: int):
+    if item_id == 3:
+        raise HTTPException(status_code=418, detail="Nope! I don't like 3.")
+    return {"item_id": item_id}
+
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request, exc):
+    print(f"OMG! An HTTP error!: {repr(exc)}")
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    print(f"OMG! The client sent invalid data!: {exc}")
+    return await request_validation_exception_handler(request, exc)
+
+
+@app.get("/custom/handler/error/items/{item_id}")
+async def read_item(item_id: int):
+    if item_id == 3:
+        raise HTTPException(status_code=418, detail="Nope! I don't like 3.")
+    return {"item_id": item_id}
+
+class Tags(Enum):
+    itmes = "items"
+    users = "users"
+
+@app.post('/items/tags', response_model=ItemTagsSet,  tags=[Tags.itmes],
+    # summary="Create an item",
+    # description="Create an item with all the information, name, description, price, tax and a set of unique tags",
+    response_description="The created item",
+          )
+async def create_item(item: ItemTagsSet):
+    """
+    Create an item with all the information:
+
+    - **name**: each item must have a name
+    - **description**: a long description
+    - **price**: required
+    - **tax**: if the item doesn't have tax, you can omit this
+    - **tags**: a set of unique tag strings for this item
+    """
+    return item
+
+"""path decorator: add deprecated=True"""
+@app.get('/items/tags/read', tags=[Tags.itmes], deprecated=True)
+async def read_item():
+    return [{"name": "foo", "price": 322}]
+
+@app.get('/users/tags', tags=[Tags.users])
+async def read_users():
+    return [{"username": "johndoe"}]
