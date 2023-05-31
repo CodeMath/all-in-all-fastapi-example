@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from enum import Enum
 
 class ModelName(str, Enum):
@@ -599,4 +599,276 @@ async def read_items(
         "process_after": process_after,
         "start_process": start_process,
         "duration": duration,
+    }
+
+from fastapi import Cookie
+
+@app.get('/cookie/items')
+async def read_item_cookie(ads_id: Annotated[Union[str, None], Cookie()] = None):
+    return {"ads_id": ads_id}
+
+from fastapi import Header
+@app.get("/header/items/")
+async def read_items_header(user_agent: Union[str, None] = Header(default=None)):
+    return {"User-Agent": user_agent}
+
+@app.get("/header/items/undercover")
+async def read_items_headers(strange_header: Union[str, None] = Header(default=None, convert_underscores=False)):
+    return {"strange_header": strange_header}
+
+@app.get('xtoken/items')
+async def xtoken_items(x_token: Union[list[str], None] = Header(default=None)):
+    return {"X-Token values": x_token}
+
+"""return models"""
+from typing import Any
+@app.post('/create/item', response_model=ItemTags)
+async def create_itme_obj(item: ItemTags) -> Any:
+    return item
+
+@app.get('/get/item', response_model=list[ItemTags])
+async def get_item() -> list[ItemTags]:
+    return [
+        ItemTags(name="Portal Gun", price=42.0),
+        ItemTags(name="Plumbus", price=31.0),
+    ]
+
+
+from pydantic import EmailStr
+class UserIn(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserOut(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+@app.post('/user/signup', response_model=UserOut)
+async def create_user(user: UserIn) -> Any:
+    return user
+
+
+class BaseUser(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserIns(BaseUser):
+    password: str
+
+@app.post("/user/base/in")
+async def create_user(user: UserIns) -> BaseUser:
+    return user
+
+
+"""Directly response"""
+from fastapi import Response
+from fastapi.responses import JSONResponse, RedirectResponse
+@app.get("/portal")
+async def get_portal(teleport: bool = False) -> Response:
+    if teleport:
+        return RedirectResponse(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    return JSONResponse(content={"message": "Here's your interdimensional portal."})
+
+@app.get("/teleport")
+async def get_teleport() -> RedirectResponse:
+    return RedirectResponse(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+@app.get("/portal/response/model/none", response_model=None)
+async def get_portal(teleport: bool = False) -> Union[Response, dict]:
+    if teleport:
+        return RedirectResponse(url="https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    return {"message": "Here's your interdimensional portal."}
+
+
+class ItemObj(BaseModel):
+    name: str
+    description: Union[str, None] = None
+    price: float
+    tax: float = 10.5
+    tags: list[str] = []
+
+items_obj = {
+    "foo": {"name": "Foo", "price": 50.2},
+    "bar": {"name": "Bar", "description": "The bartenders", "price": 62, "tax": 20.2},
+    "baz": {"name": "Baz", "description": None, "price": 50.2, "tax": 10.5, "tags": []},
+}
+"""if none of filed at obj, `response_model_exclude_unset=True` active"""
+@app.get("/items/obj/{item_id}", response_model=ItemObj, response_model_exclude_unset=True)
+async def read_item(item_id: str):
+    return items_obj[item_id]
+
+@app.get(
+    "/items/obj/{item_id}/name",
+    response_model=Item,
+    response_model_include={"name", "description"},
+)
+async def read_item_name(item_id: str):
+    return items_obj[item_id]
+
+
+@app.get("/items/obj/{item_id}/public", response_model=Item, response_model_exclude={"tax"})
+async def read_item_public_data(item_id: str):
+    return items_obj[item_id]
+
+
+"""hashed db"""
+class UserInHashed(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserOutHashed(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserInDB(BaseModel):
+    username: str
+    hashed_password: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+def fake_password_hasher(raw_password: str):
+    return "supersecret"+raw_password
+
+def fake_save_user(user_in: UserInHashed):
+    hashed_password = fake_password_hasher(user_in.password)
+    user_in_db = UserInDB(**user_in.dict(), hashed_password=hashed_password)
+    print("User saved! ..not really")
+    return user_in_db
+
+@app.post("/user/hashsed/password", response_model=UserOutHashed)
+async def create_user(user_in: UserInHashed):
+    user_saved = fake_save_user(user_in)
+    return user_saved
+
+"""lighting code"""
+class UserBaseModel(BaseModel):
+    username: str
+    email: EmailStr
+    full_name: Union[str, None] = None
+
+class UserInModel(UserBaseModel):
+    password: str
+
+class UserOutModel(UserBaseModel):
+    pass
+
+class UserInDBModel(UserBaseModel):
+    hashed_password: str
+
+def fake_password_hasher_model(raw_password: str):
+    return "supersecret"+raw_password
+
+def fake_save_user_model(user_in: UserInModel):
+    hashed_password = fake_password_hasher(user_in.password)
+    user_in_db = UserInDBModel(**user_in.dict(), hashed_password=hashed_password)
+    print("User saved! ..not really")
+    return user_in_db
+
+from fastapi import status
+@app.post("/user/hashsed/password/201", response_model=UserOutModel, status_code=status.HTTP_201_CREATED)
+async def create_user(user_in: UserInModel):
+    user_saved = fake_save_user_model(user_in)
+    return user_saved
+
+class BaseItem(BaseModel):
+    description: str
+    type: str
+
+class CarItem(BaseItem):
+    type = "car"
+
+class PlaneItem(BaseItem):
+    type = "plane"
+    size: int
+
+items = {
+    "item1": {"description": "All my friends drive a low rider", "type": "car"},
+    "item2": {
+        "description": "Music is my aeroplane, it's my aeroplane",
+        "type": "plane",
+        "size": 5,
+    },
+}
+
+
+@app.get("/anyof/items/{item_id}", response_model=Union[PlaneItem, CarItem])
+async def read_item(item_id: str):
+    return items[item_id]
+
+@app.get("/keyword-weights/", response_model=dict[str, float])
+async def read_keyword_weights():
+    return {"foo": 2.3, "bar": 3.4}
+
+"""
+Status code
+
+200: success
+201: create
+204: nobody
+3xx: redirection & nobody
+304: no modify
+4xx: client error
+404: not found
+5xx: server error
+"""
+@app.post("/201/items/", status_code=201)
+async def create_item(name: str):
+    return {"name": name}
+
+from fastapi import status
+@app.post('/create/items/new', status_code=status.HTTP_201_CREATED)
+async def create_item(name: str):
+    return {"name": name}
+
+"""Form"""
+from fastapi import Form
+
+@app.post('/login')
+async def login(username: Annotated[str, Form()], password: Annotated[str, Form()]):
+    return {"username": username}
+
+from fastapi import File, UploadFile
+"""
+File or UploadFile
+> use UploadFile, no bytes: file upload is no more use than enough memory. and read file's metadata.
+> UploadFile: filename, content_type, file, `SpooledTemporaryFile`(if overflow memory, auto del)
+> async method: write(data), read(size), seek(offset), close()
+
+`media format`: application/x-www-form-urlencoded
+`file format`: multipart/form-data
+"""
+@app.post('/file/')
+async def create_file(file: bytes = File()):
+    return {"file_size": len(file)}
+
+@app.post('/uploadfile/')
+async def create_upload_file(file: UploadFile):
+    return {"filename": file.filename}
+
+
+@app.post('/files/')
+async def create_files(files: list[bytes] = File()):
+    return {"file_sizes": [len(file) for file in files]}
+
+@app.post('/uploadfiles/')
+async def create_upload_files(files: list[UploadFile]):
+    return {"filename": [file.filename for file in files]}
+
+
+@app.post("/files/fileb/token")
+async def create_file(
+    file: bytes = File(), fileb: UploadFile = File(), token: str = Form()
+):
+    """Using file and Form ,one request"""
+    return {
+        "file_size": len(file),
+        "token": token,
+        "fileb_content_type": fileb.content_type,
     }
