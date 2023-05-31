@@ -988,3 +988,81 @@ async def read_item():
 @app.get('/users/tags', tags=[Tags.users])
 async def read_users():
     return [{"username": "johndoe"}]
+
+from fastapi.encoders import jsonable_encoder
+fake_db = {}
+@app.put("/jsonable/encoder/items/{id}")
+def update_item(id: str, item: Item):
+    json_compatible_item_data = jsonable_encoder(item)
+    fake_db[id] = json_compatible_item_data
+
+@app.put("/body/update/items/{item_id}", response_model=ItemTags)
+async def update_item(item_id: str, item: ItemTags):
+    stored_item_data = items_obj[item_id]
+    stored_item_model = ItemTags(**stored_item_data)
+
+    update_data = item.dict(exclude_unset=True)
+    updated_item = stored_item_model.copy(update=update_data)
+
+    update_item_encoded = jsonable_encoder(updated_item)
+    items_obj[item_id] = update_item_encoded
+    return update_item_encoded
+
+"""dependency param"""
+from fastapi import Depends
+
+async def common_parameters(
+        q: Union[str, None] = None, skip: int = 0, limit: int = 100
+):
+    return {"q": q, "skip": skip, "limit": limit}
+
+CoomonDep = Annotated[dict, Depends(common_parameters)]
+
+@app.get("/common/param/items/")
+async def read_items(commons: CoomonDep):
+    return commons
+
+
+@app.get("/common/param/users/")
+async def read_users(commons: CoomonDep):
+    return commons
+
+
+def query_extractor(s: Union[str, None] = None):
+    return s
+
+
+def query_or_cookie_extractor(
+    s: Annotated[str, Depends(query_extractor)],
+    last_query: Annotated[Union[str, None], Cookie()] = None,
+):
+    if not s:
+        return last_query
+    return s
+
+queryDefault = Annotated[str, Depends(query_or_cookie_extractor)]
+@app.get("/dependency/low/low/items/", dependencies=[Depends(common_parameters), Depends(query_or_cookie_extractor)])
+async def read_query(
+    query_or_default: queryDefault
+):
+    return {"q_or_cookie": query_or_default}
+
+
+fake_items_dbs = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
+
+class CommonQueryParams:
+    def __init__(self, q: Union[str, None] = None, skip: int = 0, limit: int = 100):
+        self.q = q
+        self.skip = skip
+        self.limit = limit
+
+
+@app.get("/common/query/param/items/")
+async def read_items(commons: CommonQueryParams = Depends(CommonQueryParams)):
+    response = {}
+    if commons.q:
+        response.update({"q": commons.q})
+    items = fake_items_dbs[commons.skip : commons.skip + commons.limit]
+    response.update({"items": items})
+    return response
