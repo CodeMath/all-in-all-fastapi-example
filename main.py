@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from enum import Enum
-
+from router import router
 class ModelName(str, Enum):
 
     def _generate_next_value_(name, start, count, last_values):
@@ -18,7 +18,7 @@ class ModelName(str, Enum):
 
 
 app = FastAPI()
-
+app.include_router(router)
 
 @app.get("/")
 async def root():
@@ -1161,3 +1161,4 @@ async def signin(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
     return {"access_token": user.username, "token_type": "bearer"}
+
